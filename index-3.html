@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GEOMETRIC VISUAL ENGINE</title>
+<style>
+/* ─────────────────────────────────────────────────────────────
+   AESTHETIC: Rüfüs Du Sol / Chris Lake / Hot Since 82
+   Stark black. Hairline white geometry. Warm amber accents.
+   Everything symmetric, minimal, hypnotic.
+   Mobile-first: touch targets ≥44px, safe-area insets, swipe
+───────────────────────────────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width:100%; height:100%;
+  background:#000;
+  overflow:hidden;
+  /* Prevent iOS rubber-band scroll */
+  overscroll-behavior:none;
+  /* Disable callouts / selection on long-press */
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+  /* Disable tap highlight flash */
+  -webkit-tap-highlight-color:transparent;
+}
+
+canvas {
+  position:fixed; top:0; left:0;
+  width:100vw; height:100vh;
+  display:block;
+  /* Prevent scroll-triggered canvas moves on iOS */
+  touch-action:none;
+}
+
+/* ── HUD — top centre, compact on small screens ── */
+#hud {
+  position:fixed; top:max(14px, env(safe-area-inset-top, 14px)); left:50%;
+  transform:translateX(-50%);
+  font:clamp(7px,1.8vw,9px)/1 'Courier New', monospace;
+  letter-spacing:.2em; text-transform:uppercase;
+  color:rgba(255,255,255,.25);
+  pointer-events:none; z-index:20;
+  display:flex; gap:clamp(10px,3vw,20px); align-items:center;
+  white-space:nowrap;
+}
+#hud span { color:rgba(255,255,255,.55); }
+
+#pip {
+  width:5px; height:5px; border-radius:50%;
+  background:rgba(255,255,255,.2);
+  transition:background .03s, box-shadow .03s;
+  flex-shrink:0;
+}
+#pip.on { background:#fff; box-shadow:0 0 8px rgba(255,255,255,.9); }
+
+/* ── Mode label — top left ── */
+#modetag {
+  position:fixed; top:max(14px, env(safe-area-inset-top, 14px)); left:max(14px, env(safe-area-inset-left, 14px));
+  font:clamp(7px,1.8vw,9px)/1 'Courier New', monospace;
+  letter-spacing:.2em; text-transform:uppercase;
+  color:rgba(255,255,255,.2);
+  pointer-events:none; z-index:20;
+}
+
+/* ── Audio row — top right ── */
+#audioRow {
+  position:fixed;
+  top:max(10px, env(safe-area-inset-top, 10px));
+  right:max(10px, env(safe-area-inset-right, 10px));
+  display:flex; gap:5px; align-items:center; z-index:20;
+}
+#fileInput { display:none; }
+.abtn {
+  font:clamp(7px,1.8vw,8px)/1 'Courier New', monospace;
+  letter-spacing:.14em; text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+  /* Min 44px tall touch target */
+  min-height:36px; padding:0 10px;
+  display:flex; align-items:center;
+  border:1px solid rgba(255,255,255,.12);
+  cursor:pointer; background:rgba(0,0,0,.65);
+  transition:all .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.abtn:active { color:rgba(255,255,255,.9); border-color:rgba(255,255,255,.4); }
+#fileName {
+  font:clamp(6px,1.6vw,8px)/1 'Courier New', monospace;
+  letter-spacing:.1em; text-transform:uppercase;
+  color:rgba(255,255,255,.18);
+  max-width:min(120px, 22vw);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ── Mode switcher — bottom, scrollable on narrow screens ── */
+#ui {
+  position:fixed;
+  bottom:0; left:0; right:0;
+  display:flex; align-items:stretch; justify-content:center;
+  gap:0; z-index:20;
+  /* Safe-area bottom padding (iPhone home bar) */
+  padding-bottom:max(14px, env(safe-area-inset-bottom, 14px));
+  padding-left:max(0px, env(safe-area-inset-left, 0px));
+  padding-right:max(0px, env(safe-area-inset-right, 0px));
+  pointer-events:none;
+  /* Allow horizontal scroll on very small screens */
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+#ui::-webkit-scrollbar { display:none; }
+
+.ctrl {
+  font:clamp(7px,1.8vw,9px)/1 'Courier New', monospace;
+  letter-spacing:.14em; text-transform:uppercase;
+  color:rgba(255,255,255,.28);
+  /* 44px min touch target height */
+  min-height:44px; padding:0 clamp(8px,2vw,16px);
+  display:flex; align-items:center;
+  border:1px solid rgba(255,255,255,.08); border-right:none;
+  cursor:pointer; pointer-events:all;
+  transition:color .12s, background .12s, border-color .12s;
+  background:rgba(0,0,0,.75);
+  white-space:nowrap; flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;
+}
+.ctrl:last-child { border-right:1px solid rgba(255,255,255,.08); }
+.ctrl:active  { background:rgba(255,255,255,.1); }
+.ctrl.active  { color:#fff; border-color:rgba(255,255,255,.45); background:rgba(255,255,255,.08); }
+
+/* ── BPM controls — shown on mobile as +/- buttons ── */
+#bpmControls {
+  position:fixed;
+  bottom:max(70px, calc(70px + env(safe-area-inset-bottom, 0px)));
+  right:max(14px, env(safe-area-inset-right, 14px));
+  display:flex; flex-direction:column; gap:4px; z-index:20;
+}
+.bpmBtn {
+  font:11px/1 'Courier New', monospace;
+  color:rgba(255,255,255,.3);
+  width:36px; height:36px;
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.7);
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:all .1s;
+}
+.bpmBtn:active { color:#fff; border-color:rgba(255,255,255,.4); background:rgba(255,255,255,.1); }
+
+/* ── Swipe hint — only on touch devices, fades after first swipe ── */
+#swipeHint {
+  position:fixed; bottom:max(70px,calc(70px + env(safe-area-inset-bottom,0px)));
+  left:50%; transform:translateX(-50%);
+  font:8px/1 'Courier New', monospace;
+  letter-spacing:.15em; text-transform:uppercase;
+  color:rgba(255,255,255,.15);
+  pointer-events:none; z-index:20;
+  transition:opacity .5s;
+}
+
+/* ── Key hints — desktop only ── */
+#keys {
+  position:fixed; bottom:max(70px,calc(70px + env(safe-area-inset-bottom,0px))); right:max(14px, env(safe-area-inset-right,14px));
+  font:8px/2 'Courier New', monospace;
+  letter-spacing:.12em; text-transform:uppercase;
+  color:rgba(255,255,255,.12);
+  text-align:right;
+  pointer-events:none; z-index:20;
+}
+@media (hover:none) {
+  /* Touch device: hide keyboard hints, show BPM buttons */
+  #keys { display:none; }
+  #bpmControls { display:flex; }
+}
+@media (hover:hover) {
+  /* Mouse device: hide BPM buttons */
+  #bpmControls { display:none; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<!-- Top HUD -->
+<div id="hud">
+  <div id="pip"></div>
+  <div>BPM <span id="bpmDisplay">124</span></div>
+  <div>BEAT <span id="beatNum">1</span>/4</div>
+  <div>PHRASE <span id="phraseNum">1</span></div>
+</div>
+
+<div id="modetag">TUNNEL</div>
+
+<!-- Audio controls top-right -->
+<div id="audioRow">
+  <input type="file" id="fileInput" accept="audio/*">
+  <div class="abtn" onclick="document.getElementById('fileInput').click()">LOAD</div>
+  <div class="abtn" id="playPauseBtn" onclick="toggleAudio()" style="display:none">PLAY</div>
+  <div id="fileName">SIM BPM</div>
+</div>
+
+<!-- Mode switcher bottom -->
+<div id="ui">
+  <div class="ctrl active" data-mode="0">1 TUNNEL</div>
+  <div class="ctrl" data-mode="1">2 GRID</div>
+  <div class="ctrl" data-mode="2">3 MANDALA</div>
+  <div class="ctrl" data-mode="3">4 HEX</div>
+  <div class="ctrl" data-mode="4">5 MIRROR</div>
+  <div class="ctrl" data-mode="5">6 STROBE</div>
+</div>
+
+<!-- BPM +/- buttons (touch devices only, shown via CSS media query) -->
+<div id="bpmControls">
+  <div class="bpmBtn" id="bpmUp">+</div>
+  <div class="bpmBtn" id="bpmDown">−</div>
+</div>
+
+<!-- Swipe hint (touch only) -->
+<div id="swipeHint">SWIPE ← → TO CHANGE MODE</div>
+
+<!-- Key hints (desktop only) -->
+<div id="keys">
+  1–6 mode<br>
+  ←→ bpm<br>
+  space pause<br>
+  a auto-cycle
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   GEOMETRIC VISUAL ENGINE — Rüfüs Du Sol / Chris Lake aesthetic
+   ───────────────────────────────────────────────────────────────────
+   DESIGN RULES:
+   • Pure black background — geometry lives in the void
+   • White hairlines (0.5–2px) for primary shapes
+   • Warm amber (#f5a623) for accent / highlight moments
+   • Everything locks to the beat grid (4/4, 8-bar phrases)
+   • Motions: zoom-in tunnels, slow rotations, symmetric expansions
+   • NO particles, NO fuzzy glows, NO gradients on shapes
+   • Radial gradients ONLY as subtle vignette / atmosphere
+
+   TIMING ENGINE:
+   • Internal BPM clock generates precise beat/bar/phrase events
+   • Web Audio FFT plugs in seamlessly when audio is loaded
+   • Beat => shape trigger; Bar => pattern step; Phrase => mode shift
+   ═══════════════════════════════════════════════════════════════════ */
+
+// ── Canvas ────────────────────────────────────────────────────────
+const cv  = document.getElementById('c');
+const ctx = cv.getContext('2d');
+// 1920×1080 internal; CSS scales to viewport
+const W = 1920, H = 1080;
+cv.width = W; cv.height = H;
+const CX = W/2, CY = H/2;
+
+// ── Colour constants ──────────────────────────────────────────────
+const WHITE  = '#ffffff';
+const DIM    = 'rgba(255,255,255,0.12)';
+const AMBER  = '#f0a020';           // warm amber accent
+const AMBER2 = 'rgba(240,160,32,'; // amber with custom alpha
+
+// ── BPM / timing engine ───────────────────────────────────────────
+/*
+  The timing engine drives all animations — whether or not real audio
+  is loaded. When audio IS loaded, the FFT data augments energies.
+
+  Time is measured in TICKS (frames at 60fps).
+  beatInterval = (60000 / bpm) ms converted to ticks.
+  Each beat increments beatCount; bar = 4 beats; phrase = 8 bars.
+*/
+let bpm         = 124;     // default house BPM
+let playing     = true;
+let beatCount   = 0;       // total beats elapsed
+let barCount    = 0;       // bars (4 beats)
+let phraseCount = 0;       // phrases (8 bars = 32 beats)
+
+// Smoothed energy values — updated from FFT or simulated from BPM clock
+let eBass  = 0;  // 0-1 bass energy
+let eMid   = 0;  // 0-1 mid energy
+let eHigh  = 0;  // 0-1 high energy
+let eFull  = 0;  // 0-1 overall
+
+// Beat flash: 1.0 on beat → decays to 0 each frame
+let beatFlash  = 0;
+let barFlash   = 0;   // extra flash on bar 1
+let phraseFlash= 0;   // extra on phrase 1
+
+// Internal clock: track when next beat fires (using performance.now)
+let nextBeatTime = performance.now();
+let lastNow      = performance.now();
+let paused       = false;
+let pausedAt     = 0;
+
+// Beat-locked animation values (updated per beat, lerped per frame)
+let beatScale   = 1.0;   // shape scale that pulses on beat
+let beatRotStep = 0;     // accumulated rotation stepped on beat
+
+// Phrase counter for auto mode-cycle
+let autoCycle  = false;
+let phraseMod  = 0;      // phrase count modulo for cycling
+
+// ── Audio (optional) ─────────────────────────────────────────────
+let actx, analyser, audioSrc, audioBuffer;
+let audioLoaded = false, audioPlaying = false;
+let fftData, waveData;
+
+// ── Mode management ───────────────────────────────────────────────
+let mode         = 0;
+const MODE_NAMES = ['TUNNEL','GRID','MANDALA','HEX','MIRROR','STROBE GRID'];
+const N_MODES    = 6;
+
+// ── Global tick (frame counter) ───────────────────────────────────
+let tick = 0;
+
+// ── Smoothed animation state (lerped every frame) ─────────────────
+// These prevent jitter — all visuals read smooth* values
+let smoothBass  = 0, smoothMid = 0, smoothHigh = 0;
+let smoothBeat  = 0;  // smooth beatFlash for glow intensity
+let smoothScale = 1;  // smooth scale pulse
+let tunnelZ     = 0;  // tunnel zoom phase (0-1, loops)
+let gridRotation= 0;  // global rotation accumulator
+let hexPhase    = 0;  // hex pattern phase
+let mandalaRot  = 0;  // mandala rotation
+let mirrorPhase = 0;  // mirror fold phase
+let strobePhase = 0;  // strobe grid phase
+
+// ═══════════════════════════════════════════════════════════════════
+//  TIMING ENGINE
+// ═══════════════════════════════════════════════════════════════════
+function tickClock(now) {
+  if (paused) return;
+
+  // Fire beats based on wall clock (stays accurate regardless of FPS)
+  while (now >= nextBeatTime) {
+    fireBeat();
+    nextBeatTime += (60000 / bpm);
+  }
+
+  // Update simulated energy from clock even without audio
+  // Bass pulses on beat 1 & 3 of bar; mid on 2 & 4
+  const msInBeat   = (now - (nextBeatTime - 60000/bpm));
+  const beatPhaseN = msInBeat / (60000/bpm);   // 0-1 within current beat
+  const beatInBar  = beatCount % 4;
+
+  // Simulated energies — smooth cosine envelopes per beat position
+  const kick   = beatInBar===0||beatInBar===2 ? 1 : 0;
+  const snare  = beatInBar===1||beatInBar===3 ? 1 : 0;
+  const decay  = Math.exp(-beatPhaseN * 5);
+  eBass  = kick  * decay * 0.85 + 0.05;
+  eMid   = snare * decay * 0.65 + 0.04;
+  eHigh  = (0.15 + 0.1*Math.sin(tick*0.18)) * (1-beatPhaseN*0.5);
+  eFull  = (eBass + eMid + eHigh) / 3;
+
+  // If real audio is loaded, override with FFT
+  if (audioLoaded && audioPlaying && analyser) {
+    analyser.getByteFrequencyData(fftData);
+    const sr    = actx.sampleRate;
+    const binHz = actx.sampleRate / 2048;
+    eBass = bandAvg(fftData, 20, 200, binHz) / 255;
+    eMid  = bandAvg(fftData, 200, 4000, binHz) / 255;
+    eHigh = bandAvg(fftData, 4000, 16000, binHz) / 255;
+    eFull = bandAvg(fftData, 20, 20000, binHz) / 255;
+  }
+}
+
+function fireBeat() {
+  beatCount++;
+  beatFlash = 1.0;
+  smoothScale = 1.0 + 0.12;  // snap up on beat
+
+  const b = beatCount % 4;
+  if (b === 0) {
+    barCount++;
+    barFlash = 1.0;
+    beatRotStep += Math.PI / 12;  // rotate 15° per bar
+
+    const bar = barCount % 8;
+    if (bar === 0) {
+      phraseCount++;
+      phraseFlash = 1.0;
+      phraseMod++;
+      if (autoCycle) setMode(phraseMod % N_MODES);
+    }
+  }
+
+  updateHUD();
+}
+
+function updateHUD() {
+  document.getElementById('bpmDisplay').textContent = bpm;
+  document.getElementById('beatNum').textContent    = (beatCount % 4) + 1;
+  document.getElementById('phraseNum').textContent  = phraseCount + 1;
+  document.getElementById('pip').classList.add('on');
+  setTimeout(() => document.getElementById('pip').classList.remove('on'), 80);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  HELPER DRAWING PRIMITIVES
+// ═══════════════════════════════════════════════════════════════════
+
+/** Draw a regular polygon centered at (cx,cy) with outer radius r */
+function polygon(cx, cy, r, sides, rotation=0, stroke=WHITE, lw=1) {
+  ctx.beginPath();
+  for (let i=0; i<sides; i++) {
+    const a = rotation + (Math.PI*2/sides)*i - Math.PI/2;
+    i===0 ? ctx.moveTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r)
+           : ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r);
+  }
+  ctx.closePath();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth   = lw;
+  ctx.stroke();
+}
+
+/** Draw a rectangle outline centered at (cx,cy), w×h, rotated */
+function rect(cx, cy, w, h, rotation=0, stroke=WHITE, lw=1) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth   = lw;
+  ctx.strokeRect(-w/2, -h/2, w, h);
+  ctx.restore();
+}
+
+/** Draw a line from (x0,y0) to (x1,y1) */
+function line(x0,y0,x1,y1, stroke=WHITE, lw=0.5) {
+  ctx.beginPath();
+  ctx.moveTo(x0,y0); ctx.lineTo(x1,y1);
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth   = lw;
+  ctx.stroke();
+}
+
+/** Draw a circle outline */
+function circle(cx,cy,r, stroke=WHITE, lw=1) {
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke();
+}
+
+/** Hexagon helper — flat-top */
+function hexagon(cx,cy,r, stroke=WHITE, lw=1, rotation=0) {
+  polygon(cx,cy,r,6,rotation,stroke,lw);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE 0 — SQUARE TUNNEL
+//  Concentric squares zoom toward camera in sync with beat.
+//  Beat 1 = new square enters from back.
+//  Lines connect corners across layers for 3D warp effect.
+// ═══════════════════════════════════════════════════════════════════
+/*
+  DESIGN: Rüfüs Du Sol "Treat You Better" video style.
+  Pure white squares receding to a vanishing point.
+  Every 8 bars the rotation phase shifts 45°.
+  Bass energy controls zoom speed.
+*/
+const TUNNEL_LAYERS = 18;
+
+function modeTunnel() {
+  const t      = tick * 0.008;
+  // Zoom speed: base + bass energy boost
+  const spd    = 0.004 + smoothBass * 0.006;
+  tunnelZ      = (tunnelZ + spd) % 1;
+
+  // Rotation: slow base + beat-stepped jumps
+  const rot    = gridRotation + t * 0.003;
+
+  // Vanishing point can breathe slightly
+  const vx = CX + Math.sin(t*0.07) * 40;
+  const vy = CY + Math.cos(t*0.05) * 25;
+
+  for (let i=0; i<TUNNEL_LAYERS; i++) {
+    // z goes 0 (near) → 1 (far); tunnelZ shifts the phase
+    const z    = ((i / TUNNEL_LAYERS) + tunnelZ) % 1;
+    // Size: near layers are large, far are tiny
+    const sz   = (1 - z) * (W * 0.72) + 8;
+    // Each layer rotates slightly for warp
+    const lrot = rot + z * (Math.PI/4);
+    // Fade distant layers
+    const alpha= 0.08 + (1-z) * 0.55;
+    // Amber highlight on the nearest 2 layers on beat
+    const isNear = z < (2/TUNNEL_LAYERS);
+    const stroke = isNear && beatFlash > 0.5 ? AMBER : `rgba(255,255,255,${alpha})`;
+    const lw     = isNear ? 1.5 : 0.6 + (1-z)*0.8;
+
+    // Draw square at perspective-scaled position
+    const px = vx + (CX - vx) * z;
+    const py = vy + (CY - vy) * z;
+    rect(px, py, sz, sz * (H/W), lrot, stroke, lw);
+  }
+
+  // Connect corners of adjacent layers with lines (3D cage effect)
+  const corners = 4;
+  for (let c=0; c<corners; c++) {
+    const angle = gridRotation + (Math.PI*2/corners)*c + Math.PI/4;
+    for (let i=0; i<TUNNEL_LAYERS-1; i++) {
+      const z0  = ((i   / TUNNEL_LAYERS) + tunnelZ) % 1;
+      const z1  = (((i+1)/TUNNEL_LAYERS) + tunnelZ) % 1;
+      if (Math.abs(z0-z1) > 0.5) continue; // skip wrap
+      const s0  = (1-z0)*W*0.72*0.5;
+      const s1  = (1-z1)*W*0.72*0.5;
+      const p0x = CX + Math.cos(angle + z0*(Math.PI/4))*s0*(W/H*0.56);
+      const p0y = CY + Math.sin(angle + z0*(Math.PI/4))*s0*0.56;
+      const p1x = CX + Math.cos(angle + z1*(Math.PI/4))*s1*(W/H*0.56);
+      const p1y = CY + Math.sin(angle + z1*(Math.PI/4))*s1*0.56;
+      line(p0x,p0y,p1x,p1y, `rgba(255,255,255,${0.04+(1-z0)*0.12})`, 0.5);
+    }
+  }
+
+  // Beat flash: draw one bright square at the near edge
+  if (beatFlash > 0.1) {
+    rect(CX, CY, W*0.68, H*0.68, gridRotation, AMBER2+(beatFlash*0.6)+')', beatFlash*2.5);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE 1 — ROTATING GRID
+//  Full-screen grid that rotates in 15° steps on each bar.
+//  Grid cells pulse to bass. Every other beat the grid shifts phase.
+// ═══════════════════════════════════════════════════════════════════
+/*
+  DESIGN: Hot Since 82 "Grid" aesthetic.
+  Perfect orthogonal grid, slowly rotating.
+  Grid lines are hairlines. Beat = pulse outward.
+  Amber cross-hairs appear at grid intersections on phrase.
+*/
+function modeGrid() {
+  const rot  = gridRotation * 0.25;
+  const cols = 16, rows = 9;
+  const cw   = W / cols, ch = H / rows;
+
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(rot);
+  ctx.translate(-CX, -CY);
+
+  // Extended bounds so rotation never shows bare corners
+  const ext = 300;
+
+  // Vertical lines
+  const startX = -ext - (CX % cw);
+  for (let x = startX; x < W + ext; x += cw) {
+    const distFromCentre = Math.abs(x + CX - CX - CX) / (W/2+ext);
+    const alpha = 0.08 + (1-distFromCentre)*0.15 + smoothBeat*0.08;
+    line(x, -ext, x, H+ext, `rgba(255,255,255,${alpha})`, 0.5);
+  }
+  // Horizontal lines
+  const startY = -ext - (CY % ch);
+  for (let y = startY; y < H + ext; y += ch) {
+    const distFromCentre = Math.abs(y + CY - CY - CY) / (H/2+ext);
+    const alpha = 0.08 + (1-distFromCentre)*0.15 + smoothBeat*0.08;
+    line(-ext, y, W+ext, y, `rgba(255,255,255,${alpha})`, 0.5);
+  }
+
+  ctx.restore();
+
+  // Concentric square emphasis: bars pulse outward from centre
+  const bars = 6;
+  for (let b=0; b<bars; b++) {
+    const progress = ((tick*0.006 + b/bars) % 1);
+    const sz       = progress * W * 1.2;
+    const alpha    = (1-progress) * 0.18 * (1+smoothBeat);
+    rect(CX,CY, sz, sz*(H/W), rot, `rgba(255,255,255,${alpha})`, 0.8);
+  }
+
+  // Amber crosshair at centre on phrase downbeat
+  if (phraseFlash > 0.01) {
+    const len = W * 0.45 * phraseFlash;
+    line(CX-len, CY, CX+len, CY, AMBER2+(phraseFlash*0.8)+')', 1.5);
+    line(CX, CY-len*0.56, CX, CY+len*0.56, AMBER2+(phraseFlash*0.8)+')', 1.5);
+  }
+
+  // Beat dot at centre
+  if (beatFlash > 0.3) {
+    circle(CX, CY, 3 + beatFlash*12, AMBER2+(beatFlash*0.9)+')', beatFlash*2);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE 2 — MANDALA / RADIAL SYMMETRY
+//  8-fold rotational symmetry. Concentric polygon rings.
+//  Beat = ring expands outward. Bar = new ring added.
+//  Mid energy drives inner polygon complexity.
+// ═══════════════════════════════════════════════════════════════════
+/*
+  DESIGN: Rüfüs Du Sol "Innerbloom" stage visual.
+  White polygon mandala slowly rotating. Every beat one ring
+  catches an amber highlight. Outer rings dimmer, inner brighter.
+  Fold count increases by 1 per phrase (6-fold → 12-fold cycle).
+*/
+const MANDALA_RINGS = 10;
+
+function modeMandala() {
+  const foldBase = 6 + (phraseCount % 4) * 2;  // 6,8,10,12 fold per phrase
+  mandalaRot += 0.0008 + smoothMid * 0.0015;
+
+  const beatRing = beatCount % MANDALA_RINGS;  // which ring highlights
+
+  for (let r=MANDALA_RINGS; r>=1; r--) {
+    const progress = r / MANDALA_RINGS;
+    const baseR    = r * 52 + smoothBass * 30 * (1-progress*0.5);
+    const rot      = mandalaRot * (r%2===0 ? 1 : -1) + gridRotation * 0.1;
+    const sides    = foldBase + (r%2) * (foldBase/2|0);
+
+    // Highlight ring on beat
+    const isBeat   = r === (beatRing+1);
+    const alpha    = 0.10 + progress*0.22 + (isBeat ? smoothBeat*0.5 : 0);
+    const lw       = 0.5 + progress*0.8  + (isBeat ? beatFlash*1.5  : 0);
+    const stroke   = isBeat && beatFlash > 0.4 ? AMBER : `rgba(255,255,255,${alpha})`;
+
+    polygon(CX, CY, baseR, sides, rot, stroke, lw);
+
+    // Spoke lines from ring r to ring r-1 (creates radial structure)
+    if (r > 1) {
+      const innerR = (r-1) * 52;
+      for (let s=0; s<foldBase; s++) {
+        const a = rot + (Math.PI*2/foldBase)*s;
+        line(
+          CX+Math.cos(a)*innerR, CY+Math.sin(a)*innerR,
+          CX+Math.cos(a)*baseR,  CY+Math.sin(a)*baseR,
+          `rgba(255,255,255,${alpha*0.3})`, 0.4
+        );
+      }
+    }
+  }
+
+  // Central circle (always bright)
+  circle(CX, CY, 12 + smoothBass*20, AMBER2+(0.5+smoothBeat*0.5)+')', 1.5);
+  circle(CX, CY, 4,  WHITE, 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE 3 — HEX TESSELLATION
+//  Full-screen hexagonal tile grid. Each hex pulses in a ripple
+//  pattern from centre outward, locked to beat timing.
+//  Beat = ripple wave starts from centre.
+// ═══════════════════════════════════════════════════════════════════
+/*
+  DESIGN: Chris Lake "Operator" / festival LED wall classic.
+  Hex grid fills screen. Hexes nearest centre are brightest.
+  Each beat a ring of hexes lights amber and fades outward.
+  Grid rotates very slowly (1 revolution per 32 bars).
+*/
+const HEX_SIZE = 72;  // hex circumradius
+const HEX_W    = HEX_SIZE * Math.sqrt(3);
+const HEX_H    = HEX_SIZE * 2;
+
+// Precompute hex grid positions
+const hexGrid = [];
+(function buildHexGrid() {
+  const cols = Math.ceil(W / HEX_W) + 4;
+  const rows = Math.ceil(H / (HEX_H*0.75)) + 4;
+  for (let r=-2; r<rows; r++) {
+    for (let c=-2; c<cols; c++) {
+      const x = c * HEX_W + (r%2===0 ? 0 : HEX_W/2);
+      const y = r * HEX_H * 0.75;
+      const dist = Math.hypot(x-CX, y-CY) / Math.min(W,H) * 2;
+      hexGrid.push({ x, y, dist });
+    }
+  }
+})();
+
+function modeHex() {
+  hexPhase += 0.006 + smoothBass*0.008;
+  const slowRot = tick * 0.00008;
+
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(slowRot);
+  ctx.translate(-CX, -CY);
+
+  for (const h of hexGrid) {
+    // Ripple: distance-based phase creates outward wave
+    const ripple = Math.sin(h.dist * Math.PI * 3 - hexPhase * Math.PI * 2);
+    const v      = (ripple + 1) * 0.5;    // 0-1
+
+    // Base alpha — centre is brightest
+    const distAlpha = Math.max(0, 1 - h.dist);
+    const alpha     = distAlpha * (0.05 + v * 0.18) + smoothBeat * v * 0.15;
+
+    // Amber highlight on beat for innermost hexes
+    const isInner = h.dist < 0.25;
+    const stroke  = isInner && v > 0.8 && beatFlash > 0.3
+                    ? AMBER2+(beatFlash*0.7)+')'
+                    : `rgba(255,255,255,${alpha})`;
+    const lw      = isInner ? 1.0 : 0.5;
+
+    hexagon(h.x, h.y, HEX_SIZE - 2, stroke, lw, Math.PI/6);
+  }
+
+  ctx.restore();
+
+  // Beat ring: draw a bright circle at the ripple front
+  if (beatFlash > 0.05) {
+    const ringR = (1-beatFlash) * W * 0.65;
+    circle(CX,CY,ringR, AMBER2+(beatFlash*0.5)+')', beatFlash*1.5);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE 4 — MIRROR / KALEIDOSCOPE
+//  4-way mirror fold of geometric shapes.
+//  A single geometric element is drawn, then mirrored across
+//  X axis, Y axis, and both diagonals (8-fold symmetry).
+//  Shapes: lines, arcs, rectangles drawn in one quadrant.
+// ═══════════════════════════════════════════════════════════════════
+/*
+  DESIGN: Stage backdrop laser-mirror aesthetic.
+  One geometric motif tiled with perfect 8-fold mirror symmetry.
+  Bass = scale of elements. Beat = element snaps to new config.
+  Very clean, very hypnotic at large scale.
+*/
+function modeMirror() {
+  mirrorPhase += 0.006 + smoothMid*0.006;
+  const FOLDS = 8;
+
+  // We draw geometry in one sector, then rotate/mirror for all FOLDS
+  for (let fold=0; fold<FOLDS; fold++) {
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.rotate((Math.PI*2/FOLDS)*fold + gridRotation*0.05);
+    // Mirror alternate sectors
+    if (fold % 2 === 1) ctx.scale(1,-1);
+
+    // ── Elements drawn in one sector ─────────────────────────
+    const t = mirrorPhase;
+
+    // Radial lines — bass driven
+    const nLines = 8;
+    for (let i=0; i<nLines; i++) {
+      const a     = (Math.PI/FOLDS) * (i/nLines);
+      const r0    = 40 + smoothBass*30;
+      const r1    = 120 + smoothBass*180 + Math.sin(t*1.1+i)*40;
+      const alpha = 0.12 + (i/nLines)*0.18 + smoothBeat*0.15;
+      line(
+        Math.cos(a)*r0, Math.sin(a)*r0,
+        Math.cos(a)*r1, Math.sin(a)*r1,
+        `rgba(255,255,255,${alpha})`, 0.8
+      );
+    }
+
+    // Arc segments — mid driven
+    const arcR  = 80 + smoothMid*120;
+    const arcA  = Math.PI/FOLDS * (0.2 + smoothMid*0.4);
+    ctx.beginPath();
+    ctx.arc(0,0, arcR, 0, arcA);
+    ctx.strokeStyle = `rgba(255,255,255,${0.15+smoothBeat*0.2})`;
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    // Inner circle segment
+    ctx.beginPath();
+    ctx.arc(0,0, arcR*0.4, 0, Math.PI/FOLDS);
+    ctx.strokeStyle = `rgba(255,255,255,${0.20+smoothBass*0.15})`;
+    ctx.lineWidth   = 0.7;
+    ctx.stroke();
+
+    // Beat accent: diagonal line
+    if (beatFlash > 0.2) {
+      const bLen = 60 + smoothBass*100;
+      line(20, 20, bLen, bLen*(H/W), AMBER2+(beatFlash*0.7)+')', beatFlash*1.8);
+    }
+
+    ctx.restore();
+  }
+
+  // Centre dot
+  circle(CX,CY,5+smoothBass*8, WHITE, 1.5);
+  if (barFlash > 0.1) {
+    circle(CX,CY, 5+barFlash*40, AMBER2+(barFlash*0.6)+')', barFlash*2);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE 5 — STROBE GRID / BEAT MATRIX
+//  16×9 cell grid. Each cell has a brightness driven by beat timing
+//  and a slowly shifting interference pattern.
+//  Hard beats snap cells to white; they decay to near-black.
+//  Creates a massive LED-wall pulsing grid effect.
+// ═══════════════════════════════════════════════════════════════════
+/*
+  DESIGN: Classic LED wall matrix — every cell is a pixel.
+  Interference pattern from two overlapping sine waves creates
+  a moiré-like shifting brightness map.
+  Beat = ALL cells snap to peak. Inter-beat: pattern drifts.
+  Every bar the wave frequency steps up by 1 octave (×2).
+*/
+const SG_COLS = 24, SG_ROWS = 14;
+const SG_CW   = W / SG_COLS, SG_CH = H / SG_ROWS;
+const SG_PAD  = 6;  // gap between cells
+
+function modeStrobeGrid() {
+  strobePhase += 0.012 + smoothMid*0.01;
+  const freqStep = 1 + (barCount % 4) * 0.5;
+
+  for (let r=0; r<SG_ROWS; r++) {
+    for (let c=0; c<SG_COLS; c++) {
+      const x = c * SG_CW;
+      const y = r * SG_CH;
+      // Normalised position −1..1
+      const nx = (c / SG_COLS) * 2 - 1;
+      const ny = (r / SG_ROWS) * 2 - 1;
+
+      // Two-wave interference pattern
+      const wave1 = Math.sin(nx * Math.PI * freqStep * 3 + strobePhase * 1.2);
+      const wave2 = Math.sin(ny * Math.PI * freqStep * 2 - strobePhase * 0.9);
+      const dist  = Math.hypot(nx, ny);
+      const radial= Math.sin(dist * Math.PI * freqStep * 2.5 - strobePhase * 1.8);
+      const val   = ((wave1 + wave2 + radial) / 3 + 1) * 0.5;  // 0-1
+
+      // Beat snaps everything bright
+      const bright = val * (0.08 + smoothBass*0.18) + beatFlash * 0.25;
+      const alpha  = Math.max(0, Math.min(1, bright));
+
+      // Amber for cells above threshold on beat
+      const isHot  = val > 0.75 && beatFlash > 0.5;
+      const fill   = isHot ? AMBER2+(alpha*0.9)+')' : `rgba(255,255,255,${alpha})`;
+
+      ctx.fillStyle = fill;
+      ctx.fillRect(x+SG_PAD/2, y+SG_PAD/2, SG_CW-SG_PAD, SG_CH-SG_PAD);
+    }
+  }
+
+  // Outline the whole grid on phrase downbeat
+  if (phraseFlash > 0.05) {
+    ctx.strokeStyle = AMBER2+(phraseFlash*0.5)+')';
+    ctx.lineWidth   = phraseFlash * 2;
+    ctx.strokeRect(0,0,W,H);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BACKGROUND
+//  Pure black with very subtle radial darkening at edges.
+//  Long trail (low alpha clear) for geometry persistence.
+// ═══════════════════════════════════════════════════════════════════
+function drawBackground() {
+  // Slow fade — longer trail on modes that need it, shorter on strobe grid
+  const trailAlpha = mode === 5 ? 0.55 : mode === 1 ? 0.12 : 0.09;
+  ctx.globalAlpha = trailAlpha;
+  ctx.fillStyle   = '#000';
+  ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha = 1;
+}
+
+function drawVignette() {
+  // Subtle radial vignette — very dark at edges, none in centre
+  const g = ctx.createRadialGradient(CX,CY, H*0.28, CX,CY, W*0.7);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════════════════
+function render(now) {
+  if (!paused) {
+    tick++;
+
+    // Update clock / BPM engine
+    tickClock(now);
+
+    // Smooth all values (exponential decay)
+    smoothBass  = lerp(smoothBass,  eBass,  0.10);
+    smoothMid   = lerp(smoothMid,   eMid,   0.08);
+    smoothHigh  = lerp(smoothHigh,  eHigh,  0.12);
+    smoothBeat  = lerp(smoothBeat,  beatFlash, 0.15);
+    smoothScale = lerp(smoothScale, 1.0, 0.08);
+
+    // Decay flash values each frame
+    beatFlash   = Math.max(0, beatFlash   - 0.045);
+    barFlash    = Math.max(0, barFlash    - 0.025);
+    phraseFlash = Math.max(0, phraseFlash - 0.015);
+
+    // Accumulate global rotation (stepped on beat via beatRotStep)
+    gridRotation = lerp(gridRotation, beatRotStep, 0.04);
+
+    // ── Draw ──────────────────────────────────────────────────
+    drawBackground();
+    ctx.save();
+
+    switch(mode) {
+      case 0: modeTunnel();     break;
+      case 1: modeGrid();       break;
+      case 2: modeMandala();    break;
+      case 3: modeHex();        break;
+      case 4: modeMirror();     break;
+      case 5: modeStrobeGrid(); break;
+    }
+
+    ctx.restore();
+    drawVignette();
+  }
+
+  requestAnimationFrame(render);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MODE SWITCHER
+// ═══════════════════════════════════════════════════════════════════
+function setMode(m) {
+  mode = ((m % N_MODES) + N_MODES) % N_MODES;  // handles negative wrap
+  document.querySelectorAll('.ctrl').forEach((el,i) => el.classList.toggle('active', i===mode));
+  document.getElementById('modetag').textContent = autoCycle ? MODE_NAMES[mode] + ' [AUTO]' : MODE_NAMES[mode];
+}
+
+document.querySelectorAll('.ctrl').forEach(el => {
+  el.addEventListener('click', () => setMode(parseInt(el.dataset.mode)));
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  AUDIO LOADING
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('fileInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  if (!actx) {
+    actx     = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = actx.createAnalyser();
+    analyser.fftSize               = 2048;
+    analyser.smoothingTimeConstant = 0.80;
+    analyser.connect(actx.destination);
+    fftData  = new Uint8Array(analyser.frequencyBinCount);
+    waveData = new Uint8Array(analyser.fftSize);
+  }
+
+  const buf = await file.arrayBuffer();
+  audioBuffer = await actx.decodeAudioData(buf);
+  audioLoaded = true;
+
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('playPauseBtn').style.display = '';
+  document.getElementById('playPauseBtn').textContent = 'PLAY';
+
+  // Attempt to detect BPM from first few seconds via energy peaks
+  // (rough estimate — user can fine-tune with ←→ keys)
+});
+
+let audioOffset = 0, audioStart = 0;
+
+function toggleAudio() {
+  if (!audioLoaded) return;
+  if (actx.state === 'suspended') actx.resume();
+
+  if (audioPlaying) {
+    audioOffset += actx.currentTime - audioStart;
+    audioSrc.stop();
+    audioPlaying = false;
+    document.getElementById('playPauseBtn').textContent = 'PLAY';
+  } else {
+    audioSrc         = actx.createBufferSource();
+    audioSrc.buffer  = audioBuffer;
+    audioSrc.loop    = true;
+    audioSrc.connect(analyser);
+    audioSrc.start(0, audioOffset % audioBuffer.duration);
+    audioStart   = actx.currentTime;
+    audioPlaying = true;
+    document.getElementById('playPauseBtn').textContent = 'PAUSE';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  INPUT — KEYBOARD + TOUCH
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Keyboard ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key==='1') setMode(0);
+  if (e.key==='2') setMode(1);
+  if (e.key==='3') setMode(2);
+  if (e.key==='4') setMode(3);
+  if (e.key==='5') setMode(4);
+  if (e.key==='6') setMode(5);
+
+  if (e.key==='ArrowRight') nudgeBpm(1);
+  if (e.key==='ArrowLeft')  nudgeBpm(-1);
+  if (e.key==='ArrowUp')    nudgeBpm(5);
+  if (e.key==='ArrowDown')  nudgeBpm(-5);
+
+  if (e.code==='Space') {
+    e.preventDefault();
+    if (audioLoaded) toggleAudio();
+    else { paused = !paused; }
+  }
+  if (e.key==='a'||e.key==='A') toggleAutoCycle();
+});
+
+function nudgeBpm(delta) {
+  bpm = Math.max(80, Math.min(180, bpm + delta));
+  document.getElementById('bpmDisplay').textContent = bpm;
+}
+
+function toggleAutoCycle() {
+  autoCycle = !autoCycle;
+  document.getElementById('modetag').textContent =
+    autoCycle ? MODE_NAMES[mode] + ' [AUTO]' : MODE_NAMES[mode];
+}
+
+// ── Touch BPM buttons ────────────────────────────────────────────
+document.getElementById('bpmUp').addEventListener('click',   () => nudgeBpm(2));
+document.getElementById('bpmDown').addEventListener('click', () => nudgeBpm(-2));
+
+// Long-press BPM buttons for fast adjust
+let bpmInterval;
+function startBpmHold(delta) {
+  nudgeBpm(delta);
+  bpmInterval = setInterval(() => nudgeBpm(delta), 120);
+}
+function stopBpmHold() { clearInterval(bpmInterval); }
+
+['mousedown','touchstart'].forEach(ev => {
+  document.getElementById('bpmUp').addEventListener(ev,   (e) => { e.preventDefault(); startBpmHold(2); });
+  document.getElementById('bpmDown').addEventListener(ev, (e) => { e.preventDefault(); startBpmHold(-2); });
+});
+['mouseup','mouseleave','touchend','touchcancel'].forEach(ev => {
+  document.getElementById('bpmUp').addEventListener(ev,   stopBpmHold);
+  document.getElementById('bpmDown').addEventListener(ev, stopBpmHold);
+});
+
+// ── Swipe left/right on canvas to change mode ───────────────────
+/*
+  Swipe detection:
+    - touchstart records x,y and time
+    - touchend compares delta; if |dx| > threshold and mostly horizontal → swipe
+    - Left swipe  → next mode
+    - Right swipe → previous mode
+    - Vertical swipe → pause toggle (doesn't conflict with horizontal)
+  Tap (no significant movement) → pause/resume
+*/
+let touchStartX = 0, touchStartY = 0, touchStartT = 0;
+const SWIPE_THRESHOLD = 50;   // px
+const TAP_THRESHOLD   = 12;   // px max movement for a tap
+const SWIPE_MAX_T     = 400;  // ms max duration
+
+const swipeHint = document.getElementById('swipeHint');
+let swipeHintShown = false;
+
+cv.addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  touchStartX = t.clientX;
+  touchStartY = t.clientY;
+  touchStartT = Date.now();
+}, { passive: true });
+
+cv.addEventListener('touchend', e => {
+  const t   = e.changedTouches[0];
+  const dx  = t.clientX - touchStartX;
+  const dy  = t.clientY - touchStartY;
+  const dt  = Date.now() - touchStartT;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+
+  if (dt > SWIPE_MAX_T) return;  // too slow
+
+  if (adx < TAP_THRESHOLD && ady < TAP_THRESHOLD) {
+    // Tap → pause/play
+    if (audioLoaded) toggleAudio();
+    else { paused = !paused; }
+    return;
+  }
+
+  if (adx > SWIPE_THRESHOLD && adx > ady * 1.5) {
+    // Horizontal swipe — change mode
+    if (dx < 0) setMode(mode + 1);          // swipe left → next
+    else         setMode(mode - 1 + N_MODES); // swipe right → prev
+    // Hide hint once used
+    if (!swipeHintShown) {
+      swipeHintShown = true;
+      swipeHint.style.opacity = '0';
+    }
+  }
+}, { passive: true });
+
+// Show swipe hint only on touch devices, fade after 4s
+if (window.matchMedia('(hover:none)').matches) {
+  setTimeout(() => { swipeHint.style.opacity = '0'; swipeHintShown = true; }, 4000);
+} else {
+  swipeHint.style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════════════════
+function lerp(a,b,t) { return a+(b-a)*Math.max(0,Math.min(1,t)); }
+function clamp(v,lo,hi) { return v<lo?lo:v>hi?hi:v; }
+
+function bandAvg(arr, loHz, hiHz, binHz) {
+  const lo = Math.floor(loHz/binHz);
+  const hi = Math.min(Math.floor(hiHz/binHz), arr.length-1);
+  if (hi<=lo) return 0;
+  let s=0;
+  for (let i=lo; i<=hi; i++) s+=arr[i];
+  return s/(hi-lo+1);
+}
+
+// ── Orientation / resize handling ───────────────────────────────
+/*
+  The canvas renders at a fixed 1920×1080 internal resolution;
+  CSS stretches it to 100vw×100vh. On orientation change we just
+  let CSS handle it — no canvas resize needed. However, on
+  actual display resize (desktop window drag) we could re-evaluate.
+  For now: fix the 100dvh issue on iOS Safari where the address bar
+  dynamically resizes the viewport.
+*/
+function fixViewport() {
+  // Use dvh (dynamic viewport height) when supported, else fallback
+  document.documentElement.style.setProperty('--vh', window.innerHeight * 0.01 + 'px');
+}
+fixViewport();
+window.addEventListener('resize', fixViewport);
+window.addEventListener('orientationchange', () => {
+  setTimeout(fixViewport, 300); // let browser finish reflow
+});
+
+// ── Kick off ─────────────────────────────────────────────────────
+nextBeatTime = performance.now() + 200;  // small delay before first beat
+requestAnimationFrame(render);
+</script>
+
+<!--
+════════════════════════════════════════════════════════════════
+  HOW TO USE
+  ────────────────────────────────────────────────────────────
+  Open index.html in Chrome / Firefox / Edge.
+  Runs immediately with simulated 124 BPM house beat.
+
+  CONTROLS:
+    1–6      Switch visual mode
+    ← →      Nudge BPM ±1
+    ↑ ↓      Jump BPM ±5
+    SPACE    Pause animation
+    A        Auto-cycle modes every musical phrase (32 beats)
+
+  AUDIO:
+    Click LOAD AUDIO → select MP3/WAV/OGG
+    Click PLAY to start — visuals sync to the track's actual
+    frequency content. BPM clock still drives beat timing;
+    adjust with ← → to match your track.
+
+  FOR 4K STAGE:
+    Change W=3840, H=2160 at the top of the JS.
+    CSS auto-scales canvas to 100vw × 100vh.
+════════════════════════════════════════════════════════════════
+-->
+</body>
+</html>
